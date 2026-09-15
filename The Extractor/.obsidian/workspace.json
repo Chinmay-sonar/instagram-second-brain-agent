@@ -1,0 +1,231 @@
+{
+  "main": {
+    "id": "03fac2a365d06435",
+    "type": "split",
+    "children": [
+      {
+        "id": "7e2f77b5699e5fbc",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1e5fb9c0bcbf27db",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Resources/UI-UX & Design/21st.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "21st"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "31fbd81fab21a32e",
+    "type": "split",
+    "children": [
+      {
+        "id": "abc7bce583741949",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1d68a4b87ec0df35",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "2e129506ff432390",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "d0f97ee0d7b32f86",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "33307649d2313118",
+    "type": "split",
+    "children": [
+      {
+        "id": "0b86fa74929b655b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "bc5af3b1cf05d433",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "00 - 🚀 Master Hub.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "900cf06fad536147",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "00 - 🚀 Master Hub.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "6d0416e135d8265c",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "d09a7aa32c6d1fdb",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "50be2a27b53ed261",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "00 - 🚀 Master Hub.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "1e5fb9c0bcbf27db",
+  "lastOpenFiles": [
+    "Resources/AI & Agent Frameworks/ChatGPT Plus.md",
+    "03 - 💼 Internships & Opportunities.md",
+    "Resources/Dev Tools & Utilities/Google AI Plus x Internshala Student Offer.md",
+    "Resources/Dev Tools & Utilities/Text To Handwriting Converter.md",
+    "Resources/Dev Tools & Utilities/OpenModels Links Repository.md",
+    "Resources/Internships & Opportunities/Research Internships Guide.md",
+    "00 - 🚀 Master Hub.md",
+    "Resources/Internships & Opportunities/Robokwik Virtual Internships.md",
+    "Resources/Dev Tools & Utilities/OpenRouter.md",
+    "01 - 🎨 UI & UX Resources.md",
+    "02 - 🤖 AI Tools & Agents.md",
+    "04 - 🏆 Hackathons & Competitions.md",
+    "05 - 🗺️ Roadmaps & Learning.md",
+    "06 - 🛠️ Dev Tools & Utilities.md",
+    "Resources/UI-UX & Design/F1 Morph PowerPoint Template.md",
+    "Resources/Dev Tools & Utilities/Design Extractor.md",
+    "Resources/AI & Agent Frameworks/ChatGPT Plus for College Students.md",
+    "Resources/Roadmaps & Learning/Chai aur Code DSA Playlist.md",
+    "Untitled.canvas",
+    "Resources/UI-UX & Design/21st.md",
+    "00 - Resource Dashboard.md",
+    "Resources/Dev Tools & Utilities",
+    "Resources/Roadmaps & Learning",
+    "Resources/AI & Agent Frameworks",
+    "Resources/Hackathons & Contests",
+    "Resources/Internships & Opportunities",
+    "Resources/UI-UX & Design",
+    "Resources/🗺️ Roadmaps & Learning/Generative AI Roadmap 2026  From LLM Basics to Production Systems.md",
+    "Resources/🗺️ Roadmaps & Learning.md",
+    "Resources/🗺️ Roadmaps & Learning/Chai aur Code DSA Playlist.md",
+    "Resources/🗺️ Roadmaps & Learning/Generative AI & LLM Engineer Roadmap.md",
+    "Resources/💼 Internships & Opportunities.md",
+    "Welcome.md",
+    "Resources/🤖 AI & Agent Frameworks",
+    "Resources/🛠️ Dev Tools & Utilities",
+    "Resources/🗺️ Roadmaps & Learning",
+    "Resources/💼 Internships & Opportunities"
+  ]
+}

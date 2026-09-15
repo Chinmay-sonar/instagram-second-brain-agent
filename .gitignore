@@ -1,0 +1,51 @@
+﻿# ==========================================
+# 🛡️ STRICT SECURITY: SECRETS & KEYS (NEVER COMMIT)
+# ==========================================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.session
+credentials.json
+token.json
+processed_dms.json
+
+# ==========================================
+# Python Environments & Cache
+# ==========================================
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ==========================================
+# Temporary Media & Artifacts
+# ==========================================
+temp/
+*.mp4
+*.mp3
+*.jpg
+*.jpeg
+*.png
+*.webp
+
+# ==========================================
+# Obsidian Local Overrides & Cache
+# ==========================================
+.obsidian/workspace*
+.obsidian/cache/
+
+# ==========================================
+# Operating System & IDE Clutter
+# ==========================================
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
