@@ -56,3 +56,25 @@ def set_allowed_telegram_user(user_id: int):
         else:
             with open(env_file, "a", encoding="utf-8") as f:
                 f.write(f"\nTELEGRAM_ALLOWED_USER_ID={user_id}\n")
+
+def set_instagram_session_id(session_id: str):
+    """Persist the new Instagram session ID to .env file."""
+    global INSTAGRAM_SESSION_ID
+    clean_id = str(session_id).strip().strip('"\'')
+    INSTAGRAM_SESSION_ID = clean_id
+    env_file = BASE_DIR / ".env"
+    if env_file.exists():
+        content = env_file.read_text(encoding="utf-8")
+        if "INSTAGRAM_SESSION_ID=" in content:
+            lines = content.splitlines()
+            new_lines = []
+            for line in lines:
+                if line.startswith("INSTAGRAM_SESSION_ID="):
+                    new_lines.append(f'INSTAGRAM_SESSION_ID="{clean_id}"')
+                else:
+                    new_lines.append(line)
+            env_file.write_text("\n".join(new_lines), encoding="utf-8")
+        else:
+            with open(env_file, "a", encoding="utf-8") as f:
+                f.write(f'\nINSTAGRAM_SESSION_ID="{clean_id}"\n')
+

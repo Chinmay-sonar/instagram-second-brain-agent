@@ -229,7 +229,7 @@ Return ONLY a valid JSON object matching this exact schema:
                     "response_format": {"type": "json_object"},
                     "max_tokens": 120
                 }
-                resp = requests.post("https://integrate.api.nvidia.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
+                resp = requests.post("https://integrate.api.nvidia.com/v1/chat/completions", headers=headers, json=payload, timeout=5)
                 if resp.status_code == 200:
                     content = resp.json()["choices"][0]["message"]["content"]
                     return json.loads(content)
