@@ -145,21 +145,45 @@ RULES:
             "Cookie": f"sessionid={self.session_id}; ds_user_id={self.user_id}; csrftoken={self.csrf_token or ''}"
         }
 
+        # 1. Check if already following via friendships/show
+        try:
+            show_url = f"https://www.instagram.com/api/v1/friendships/show/{target_user_id}/"
+            show_resp = self.session.get(show_url, headers=headers, timeout=8)
+            if show_resp.status_code == 200 and "json" in show_resp.headers.get("content-type", ""):
+                f_data = show_resp.json()
+                if f_data.get("following"):
+                    return True, "Already following creator"
+                if f_data.get("outgoing_request"):
+                    return True, "Follow request already sent"
+        except Exception as e:
+            print(f"[WARN] Failed to pre-check friendship: {e}")
+
+        # 2. Perform follow
         endpoint = f"https://www.instagram.com/api/v1/friendships/create/{target_user_id}/"
         data = {"user_id": str(target_user_id), "radio_type": "wifi-none"}
 
         try:
             resp = self.session.post(endpoint, headers=headers, data=data, timeout=10)
             if resp.status_code == 200:
-                body = resp.json()
-                status = body.get("friendship_status", {})
-                if status.get("following"):
-                    return True, "Following creator"
-                elif status.get("outgoing_request"):
-                    return True, "Follow request sent"
-                return True, "Followed creator successfully"
+                if "json" in resp.headers.get("content-type", ""):
+                    body = resp.json()
+                    status = body.get("friendship_status", {})
+                    if status.get("following") or status.get("outgoing_request"):
+                        return True, "Following creator"
+                # If HTML returned, verify via friendships/show
+                show_resp = self.session.get(f"https://www.instagram.com/api/v1/friendships/show/{target_user_id}/", headers=headers, timeout=8)
+                if show_resp.status_code == 200 and "json" in show_resp.headers.get("content-type", ""):
+                    if show_resp.json().get("following") or show_resp.json().get("outgoing_request"):
+                        return True, "Followed creator successfully"
+                return True, "Follow request dispatched"
             else:
                 return False, f"Status {resp.status_code}: {resp.text[:100]}"
         except Exception as e:
             return False, f"Follow error: {e}"
+
+    def update_session_id(self, new_session_id: str):
+        """Update session cookie dynamically and refresh credentials."""
+        self.session_id = new_session_id.strip()
+        self.user_id = self.session_id.split("%3A")[0] if "%3A" in self.session_id else self.user_id
+        self._init_session()
 

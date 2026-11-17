@@ -2,7 +2,7 @@ import json
 import re
 import requests
 from urllib.parse import urlparse
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from pydantic import BaseModel, Field
 
 from src.config import GEMINI_API_KEY, CATEGORIES
@@ -37,19 +37,90 @@ class WebExtractor:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         })
 
+    def select_primary_and_bonus_urls(
+        self,
+        urls: List[str],
+        reel_caption: str = "",
+        creator: str = ""
+    ) -> Tuple[str, List[str]]:
+        """
+        Intelligently choose the primary resource link matching the Reel topic,
+        and group the remaining URLs as bonus links.
+        """
+        if not urls:
+            return "", []
+        if len(urls) == 1:
+            return urls[0], []
+
+        # If multiple URLs, use Gemini to pick the best match for the reel caption
+        try:
+            urls_list_str = "\n".join([f"{i+1}. {u}" for i, u in enumerate(urls)])
+            prompt = f"""You are evaluating links sent by an Instagram tech creator (@{creator}).
+The user watched a Reel with this caption:
+\"\"\"{reel_caption[:1500]}\"\"\"
+
+The creator's DM sent these links:
+{urls_list_str}
+
+TASK:
+Determine which link is the PRIMARY featured resource mentioned in the Reel.
+Output ONLY the chosen URL string. Nothing else."""
+
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.gemini_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 100}
+            }
+            r = self.session.post(url, json=payload, timeout=10)
+            if r.status_code == 200:
+                text = r.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                for u in urls:
+                    if u in text or text in u:
+                        bonus = [x for x in urls if x != u]
+                        return u, bonus
+        except Exception as e:
+            print(f"[WARN] Failed Gemini primary link selection: {e}")
+
+        # Fallback: first URL is primary, rest are bonus
+        return urls[0], urls[1:]
+
     def unshorten(self, url: str) -> str:
         """Follow redirects to get the real canonical URL."""
+        if not url:
+            return ""
+        if "x.com" in url or "twitter.com" in url:
+            return url
         try:
-            resp = self.session.head(url, allow_redirects=True, timeout=10)
+            resp = self.session.head(url, allow_redirects=True, timeout=8)
             return resp.url
         except Exception:
             return url
 
     def fetch_page_content(self, url: str) -> str:
         """
-        Fetch full page content using Jina AI reader (converts any webpage or Notion doc to clean Markdown).
+        Fetch full page content using Jina AI reader or vxtwitter for X/Twitter posts.
         """
         canonical_url = self.unshorten(url)
+
+        # Special handler for x.com / twitter.com links
+        if "x.com" in canonical_url or "twitter.com" in canonical_url:
+            try:
+                # Convert URL to api.vxtwitter.com endpoint
+                match = re.search(r'(?:x\.com|twitter\.com)/([^/]+/status/\d+)', canonical_url)
+                if match:
+                    api_url = f"https://api.vxtwitter.com/{match.group(1)}"
+                    r = self.session.get(api_url, timeout=10)
+                    if r.status_code == 200:
+                        data = r.json()
+                        art = data.get("article", {})
+                        title = art.get("title", "")
+                        preview = art.get("preview_text", "")
+                        text = data.get("text", "")
+                        author = data.get("user_name", "")
+                        return f"Twitter/X Post by {author}\nTitle: {title}\nPreview: {preview}\nContent: {text}"
+            except Exception as e:
+                print(f"[WARN] vxtwitter extraction failed: {e}")
+
         jina_endpoint = f"https://r.jina.ai/{canonical_url}"
         try:
             resp = self.session.get(jina_endpoint, timeout=20)
@@ -123,7 +194,7 @@ Return ONLY a valid JSON object matching this schema:
   "deadline": "YYYY-MM-DD or null"
 }}"""
 
-        models_to_try = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.7-flash"]
+        models_to_try = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {

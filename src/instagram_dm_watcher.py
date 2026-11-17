@@ -1,6 +1,8 @@
+import asyncio
 import json
 import re
 import time
+import uuid
 import requests
 from urllib.parse import urlparse, parse_qs, unquote
 from pathlib import Path
@@ -12,6 +14,26 @@ from src.obsidian_writer import ObsidianWriter
 
 CACHE_FILE = BASE_DIR / "processed_dms.json"
 
+class ActiveDMJob:
+    def __init__(
+        self,
+        job_id: str,
+        creator_username: str,
+        creator_id: Optional[str] = None,
+        timeout_seconds: int = 90,
+        on_status_update: Optional[Callable[[str], None]] = None
+    ):
+        self.job_id = job_id
+        self.creator_username = creator_username.lower().replace("@", "").strip()
+        self.creator_id = str(creator_id).strip() if creator_id else None
+        self.timeout_seconds = timeout_seconds
+        self.on_status_update = on_status_update
+        self.created_at = time.time()
+        self.event = asyncio.Event()
+        self.result_urls: List[str] = []
+        self.timed_out = False
+        self.notified_button = False
+
 class InstagramDMWatcher:
     def __init__(self):
         self.session_id = INSTAGRAM_SESSION_ID
@@ -21,6 +43,9 @@ class InstagramDMWatcher:
         self.processed_ids = self._load_processed_ids()
         self.session = requests.Session()
         self.csrf_token: Optional[str] = None
+        self.active_jobs: Dict[str, ActiveDMJob] = {}
+        self._poller_task: Optional[asyncio.Task] = None
+        self.on_session_expired: Optional[Callable[[], None]] = None
         self._init_session()
 
     def _init_session(self):
@@ -217,98 +242,185 @@ class InstagramDMWatcher:
 
         return clean
 
+    def update_session_id(self, new_session_id: str):
+        """Update session cookie dynamically and refresh web headers."""
+        self.session_id = new_session_id.strip()
+        self.user_id = self.session_id.split("%3A")[0] if "%3A" in self.session_id else self.user_id
+        self._init_session()
+
+    def approve_thread(self, thread_id: str) -> bool:
+        """
+        Programmatically approve a pending message request thread from Instagram's pending requests.
+        Ensures ManyChat links are readable without manual human inbox intervention.
+        """
+        if not thread_id:
+            return False
+        try:
+            url = f"https://www.instagram.com/api/v1/direct_v2/threads/{thread_id}/approve/"
+            resp = self.session.post(url, headers=self._get_web_headers(), timeout=8)
+            if resp.status_code == 200:
+                print(f"[SUCCESS] Approved pending message request thread {thread_id}")
+                return True
+        except Exception as e:
+            print(f"[WARN] Failed to approve thread {thread_id}: {e}")
+        return False
+
+    def _poll_once(self) -> None:
+        """
+        Single unified polling sweep for all active jobs across Primary and Pending inboxes.
+        Uses exact creator matching (username or pk) and automatically approves pending requests.
+        """
+        if not self.active_jobs or not self.session_id:
+            return
+
+        now = time.time()
+        # 1. Check timeouts for active jobs
+        for job_id, job in list(self.active_jobs.items()):
+            if now - job.created_at >= job.timeout_seconds:
+                print(f"[TIMEOUT] Job for @{job.creator_username} reached {job.timeout_seconds}s limit.")
+                job.timed_out = True
+                job.event.set()
+                if job_id in self.active_jobs:
+                    del self.active_jobs[job_id]
+
+        if not self.active_jobs:
+            return
+
+        threads_to_check = []
+        pending_thread_ids = set()
+
+        # 2. Fetch Primary Inbox
+        try:
+            inbox_url = "https://www.instagram.com/api/v1/direct_v2/inbox/?persistentBadging=true&folder=&limit=15"
+            inbox_resp = self.session.get(inbox_url, headers=self._get_read_headers(), timeout=8)
+            if inbox_resp.status_code == 200 and "json" in inbox_resp.headers.get("content-type", ""):
+                threads_to_check.extend(inbox_resp.json().get("inbox", {}).get("threads", []))
+            elif inbox_resp.status_code in (401, 403) or "not-logged-in" in inbox_resp.text:
+                print("[ERROR] Instagram Session Expired! Please update INSTAGRAM_SESSION_ID.")
+                if self.on_session_expired:
+                    self.on_session_expired()
+                return
+        except Exception as e:
+            print(f"[WARN] Error fetching main inbox: {e}")
+
+        # 3. Fetch Pending Inbox
+        try:
+            pending_url = "https://www.instagram.com/api/v1/direct_v2/pending_inbox/?persistentBadging=true"
+            pending_resp = self.session.get(pending_url, headers=self._get_read_headers(), timeout=8)
+            if pending_resp.status_code == 200 and "json" in pending_resp.headers.get("content-type", ""):
+                p_threads = pending_resp.json().get("inbox", {}).get("threads", [])
+                for pt in p_threads:
+                    tid = pt.get("thread_id")
+                    if tid:
+                        pending_thread_ids.add(str(tid))
+                threads_to_check.extend(p_threads)
+        except Exception as e:
+            print(f"[WARN] Error fetching pending inbox: {e}")
+
+        # 4. Strict Matching against gathered threads
+        for t in threads_to_check:
+            thread_id = t.get("thread_id")
+            users = t.get("users", [])
+            usernames = [u.get("username", "").lower().strip() for u in users]
+            user_pks = [str(u.get("pk", "")) for u in users]
+
+            # Check every active job against this thread
+            for job_id, job in list(self.active_jobs.items()):
+                # Strict matching: target creator must be in the thread users
+                is_match = (job.creator_username in usernames) or (job.creator_id and job.creator_id in user_pks)
+                if not is_match:
+                    continue
+
+                # Auto-approve if thread is in pending inbox
+                if str(thread_id) in pending_thread_ids:
+                    self.approve_thread(thread_id)
+
+                items = []
+                if thread_id:
+                    try:
+                        t_url = f"https://www.instagram.com/api/v1/direct_v2/threads/{thread_id}/"
+                        t_resp = self.session.get(t_url, headers=self._get_read_headers(), timeout=8)
+                        if t_resp.status_code == 200:
+                            items = t_resp.json().get("thread", {}).get("items", [])
+                    except Exception as e:
+                        print(f"[WARN] Error fetching thread items: {e}")
+
+                if not items:
+                    items = t.get("items", [])
+
+                # Extract URLs from recent incoming messages
+                for item in items[:6]:
+                    if item.get("is_sent_by_viewer", False):
+                        continue
+                    urls = self.extract_urls_from_item(item)
+                    if urls:
+                        print(f"[SUCCESS] Strictly matched creator DM from @{job.creator_username}: {urls[0]}")
+                        job.result_urls = urls
+                        job.event.set()
+                        if job_id in self.active_jobs:
+                            del self.active_jobs[job_id]
+                        break
+
+                # Inform user if interactive ManyChat prompt is detected
+                if not job.event.is_set() and not job.notified_button and job.on_status_update:
+                    for item in items[:2]:
+                        if item.get("item_type") == "placeholder" or (item.get("generic_xma") and any(b.get("cta_type") == "postback" for b in item.get("generic_xma", [{}])[0].get("cta_buttons", []))):
+                            job.on_status_update(f"📱 Creator ManyChat sent an interactive button! Tap it in your Instagram app...")
+                            job.notified_button = True
+                            break
+
+    async def _run_polling_loop(self):
+        """Asynchronous worker that drives unified polling every 3.5s as long as active jobs exist."""
+        while self.active_jobs:
+            try:
+                await asyncio.to_thread(self._poll_once)
+            except Exception as e:
+                print(f"[WARN] Error in unified DM polling loop: {e}")
+            await asyncio.sleep(3.5)
+        self._poller_task = None
+
+    async def wait_for_creator_dm_async(
+        self,
+        creator_username: str,
+        creator_id: Optional[str] = None,
+        timeout_seconds: int = 90,
+        on_status_update: Optional[Callable[[str], None]] = None
+    ) -> List[str]:
+        """
+        Asynchronously register a DM job and wait for the matching creator's DM.
+        Runs in parallel across multiple reels with a single, shared background polling engine.
+        """
+        job_id = f"{creator_username}_{time.time()}_{uuid.uuid4().hex[:6]}"
+        job = ActiveDMJob(
+            job_id=job_id,
+            creator_username=creator_username,
+            creator_id=creator_id,
+            timeout_seconds=timeout_seconds,
+            on_status_update=on_status_update
+        )
+        self.active_jobs[job_id] = job
+
+        # Start unified poller task if not already running
+        if not self._poller_task or self._poller_task.done():
+            self._poller_task = asyncio.create_task(self._run_polling_loop())
+
+        await job.event.wait()
+        if job.timed_out:
+            return []
+        return job.result_urls
+
     def wait_for_creator_dm(
         self,
         creator_username: str,
-        timeout_seconds: int = 50,
+        timeout_seconds: int = 90,
         on_status_update: Optional[Callable[[str], None]] = None
     ) -> Optional[str]:
-        """
-        Poll for the creator's automated ManyChat reply immediately after commenting.
-        Checks both Primary Inbox and Pending / Hidden Requests using clean Web API calls.
-        """
-        if not self.session_id:
-            return None
-
-        creator_clean = creator_username.lower().replace("@", "").strip()
+        """Synchronous polling fallback for legacy calls."""
         start_time = time.time()
-        notified_button = False
-
-        print(f"[POLL] Listening for ManyChat DM from @{creator_clean} (Timeout: {timeout_seconds}s)...")
-
+        creator_clean = creator_username.lower().replace("@", "").strip()
         while time.time() - start_time < timeout_seconds:
-            try:
-                threads_to_check = []
-
-                # 1. Fetch Primary Inbox
-                try:
-                    inbox_url = "https://www.instagram.com/api/v1/direct_v2/inbox/?persistentBadging=true&folder=&limit=15"
-                    inbox_resp = self.session.get(inbox_url, headers=self._get_read_headers(), timeout=8)
-                    if inbox_resp.status_code == 200 and "json" in inbox_resp.headers.get("content-type", ""):
-                        threads_to_check.extend(inbox_resp.json().get("inbox", {}).get("threads", []))
-                    elif inbox_resp.status_code in (401, 403):
-                        print("[ERROR] Instagram Session Expired! Please update INSTAGRAM_SESSION_ID.")
-                except Exception as e:
-                    print(f"[WARN] Error fetching main inbox: {e}")
-
-                # 2. Fetch Pending Inbox
-                try:
-                    pending_url = "https://www.instagram.com/api/v1/direct_v2/pending_inbox/?persistentBadging=true"
-                    pending_resp = self.session.get(pending_url, headers=self._get_read_headers(), timeout=8)
-                    if pending_resp.status_code == 200 and "json" in pending_resp.headers.get("content-type", ""):
-                        threads_to_check.extend(pending_resp.json().get("inbox", {}).get("threads", []))
-                except Exception as e:
-                    print(f"[WARN] Error fetching pending inbox: {e}")
-
-                # 3. Search through gathered threads
-                for t in threads_to_check:
-                    users = [u.get("username", "").lower() for u in t.get("users", [])]
-                    is_match = (creator_clean in users) or any(creator_clean in u for u in users if u) or any(u in creator_clean for u in users if u)
-
-                    # Also match if this is the newest thread received within the last 2 minutes
-                    if not is_match and t == threads_to_check[0] and (time.time() - start_time < 25):
-                        last_act = (t.get("last_activity_at") or 0) / 1000000.0
-                        if time.time() - last_act < 120:
-                            is_match = True
-
-                    if is_match:
-                        thread_id = t.get("thread_id")
-                        items = []
-                        if thread_id:
-                            try:
-                                t_url = f"https://www.instagram.com/api/v1/direct_v2/threads/{thread_id}/"
-                                t_resp = self.session.get(t_url, headers=self._get_read_headers(), timeout=8)
-                                if t_resp.status_code == 200:
-                                    items = t_resp.json().get("thread", {}).get("items", [])
-                            except Exception as e:
-                                print(f"[WARN] Error fetching thread items: {e}")
-
-                        if not items:
-                            items = t.get("items", [])
-
-                        # Check for verified link
-                        for item in items[:6]:
-                            if item.get("is_sent_by_viewer", False):
-                                continue
-                            urls = self.extract_urls_from_item(item)
-                            if urls:
-                                print(f"[SUCCESS] Intercepted creator DM link from @{creator_clean}: {urls[0]}")
-                                return urls[0]
-
-                        # If creator sent a postback button requiring interaction on phone
-                        if not notified_button and on_status_update:
-                            for item in items[:2]:
-                                if item.get("item_type") == "placeholder" or (item.get("generic_xma") and any(b.get("cta_type") == "postback" for b in item.get("generic_xma", [{}])[0].get("cta_buttons", []))):
-                                    on_status_update(f"📱 Creator ManyChat sent an interactive button! Tap it in your Instagram app...")
-                                    notified_button = True
-                                    break
-
-            except Exception as e:
-                print(f"[WARN] DM polling exception: {e}")
-
-            time.sleep(3)
-
-        print(f"[TIMEOUT] No DM link captured from @{creator_clean} within {timeout_seconds}s.")
+            self._poll_once()
+            time.sleep(3.5)
         return None
 
     def scan_inbox(self) -> List[Dict[str, Any]]:
